@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fitness Motion Arcade AR</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
+
+    <!-- MediaPipe Pose y Camera Utils -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            font-family: 'Outfit', sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+            background-color: #0d1117;
+            color: #ffffff;
+            margin: 0;
+            overflow: hidden;
+        }
+        
+        .mirror-video {
+            transform: scaleX(-1);
+        }
+        
+        .hud-glass {
+            background: rgba(15, 23, 42, 0.65);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        .pulse-anim {
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.08); opacity: 0.85; }
+        }
+    </style>
+</head>
+<body class="w-screen h-screen flex flex-col justify-center items-center overflow-hidden bg-slate-950">
+
+    <!-- Elementos de Video Ocultos para captura -->
+    <video id="input_video" class="hidden" playsinline muted></video>
+
+    <!-- Canvas Principal AR (Cámara + Juego Superpuesto) -->
+    <div id="app-container" class="relative w-full h-full max-w-md md:max-w-xl mx-auto flex flex-col justify-center items-center overflow-hidden shadow-2xl rounded-none md:rounded-3xl border-0 md:border-4 border-slate-800">
+        
+        <!-- Canvas donde se renderiza la cámara y los elementos AR -->
+        <canvas id="ar_canvas" class="w-full h-full object-cover mirror-video absolute inset-0 z-0"></canvas>
+
+        <!-- PANTALLA 1: MENÚ PRINCIPAL -->
+        <div id="menu-screen" class="relative z-10 w-full h-full flex flex-col justify-between p-6 bg-slate-950/80 backdrop-blur-md">
+            <div class="text-center mt-6">
+                <span class="bg-amber-500/20 text-amber-400 text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full border border-amber-500/30">
+                    <i class="fa-solid fa-camera-rotate mr-1"></i> AR Fitness Arcade
+                </span>
+                <h1 class="text-4xl font-black tracking-wider text-white mt-3 uppercase drop-shadow-md">
+                    Entrena <span class="text-amber-400">Jugando</span>
+                </h1>
+                <p class="text-slate-300 text-sm mt-1">Activa tu cámara y muévete para controlar el juego</p>
+            </div>
+
+            <!-- Selección de Minijuegos -->
+            <div class="space-y-4 my-auto">
+                <!-- Tarjeta Juego 1: Bici -->
+                <button onclick="window.selectGame('bike')" class="w-full bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950 p-4 rounded-2xl flex items-center shadow-lg transform transition active:scale-95 text-left border-2 border-amber-300/50 group">
+                    <div class="w-14 h-14 bg-slate-950/20 rounded-xl flex items-center justify-center text-3xl mr-4 group-hover:scale-110 transition">
+                        🚴‍♂️
+                    </div>
+                    <div>
+                        <span class="bg-slate-950/40 text-amber-100 text-[10px] font-black uppercase px-2 py-0.5 rounded">Piernas / Cardio</span>
+                        <h3 class="text-lg font-black uppercase tracking-wide leading-tight mt-0.5">La Bici Amarilla</h3>
+                        <p class="text-xs text-slate-900/80 font-medium">Corre en tu lugar para subir las colinas pedaleando.</p>
+                    </div>
+                </button>
+
+                <!-- Tarjeta Juego 2: Sentadillas -->
+                <button onclick="window.selectGame('squat')" class="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white p-4 rounded-2xl flex items-center shadow-lg transform transition active:scale-95 text-left border-2 border-emerald-300/50 group">
+                    <div class="w-14 h-14 bg-slate-950/20 rounded-xl flex items-center justify-center text-3xl mr-4 group-hover:scale-110 transition">
+                        💧
+                    </div>
+                    <div>
+                        <span class="bg-slate-950/40 text-emerald-100 text-[10px] font-black uppercase px-2 py-0.5 rounded">Fuerza / Sentadillas</span>
+                        <h3 class="text-lg font-black uppercase tracking-wide leading-tight mt-0.5">Bomba de Agua</h3>
+                        <p class="text-xs text-emerald-100/90 font-medium">Baja en sentadilla para bombear y llena la cubeta (10 pts).</p>
+                    </div>
+                </button>
+
+                <!-- Tarjeta Juego 3: Piloto Espacial -->
+                <button onclick="window.selectGame('space')" class="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white p-4 rounded-2xl flex items-center shadow-lg transform transition active:scale-95 text-left border-2 border-cyan-300/50 group">
+                    <div class="w-14 h-14 bg-slate-950/20 rounded-xl flex items-center justify-center text-3xl mr-4 group-hover:scale-110 transition">
+                        🚀
+                    </div>
+                    <div>
+                        <span class="bg-slate-950/40 text-cyan-100 text-[10px] font-black uppercase px-2 py-0.5 rounded">Agilidad / Torso</span>
+                        <h3 class="text-lg font-black uppercase tracking-wide leading-tight mt-0.5">Piloto de Nave</h3>
+                        <p class="text-xs text-cyan-100/90 font-medium">Balancéate para girar y da golpes hacia arriba para disparar.</p>
+                    </div>
+                </button>
+            </div>
+
+            <!-- Estado de la Cámara -->
+            <div id="camera-status" class="text-center text-xs text-slate-400 pb-2 flex items-center justify-center gap-2">
+                <div id="cam-dot" class="w-2.5 h-2.5 rounded-full bg-yellow-500 animate-ping"></div>
+                <span id="cam-text">Inicializando cámara de movimiento...</span>
+            </div>
+        </div>
+
+        <!-- PANTALLA 2: CUENTA REGRESIVA (5 SECONDS) -->
+        <div id="countdown-screen" class="hidden absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-950/60 backdrop-blur-sm">
+            <h2 id="countdown-title" class="text-2xl font-black uppercase text-amber-400 tracking-wider mb-2">¡Prepárate!</h2>
+            <p class="text-sm text-slate-200 mb-6 font-medium">Ubícate visible frente a la cámara</p>
+            <div id="countdown-number" class="text-9xl font-black text-white pulse-anim drop-shadow-[0_10px_20px_rgba(0,0,0,0.8)]">
+                5
+            </div>
+        </div>
+
+        <!-- PANTALLA 3: OVERLAY HUD DURANTE EL JUEGO -->
+        <div id="game-hud" class="hidden absolute inset-0 z-10 flex flex-col justify-between p-4 pointer-events-none">
+            <!-- Header HUD -->
+            <div class="flex items-center justify-between hud-glass p-3 rounded-2xl pointer-events-auto shadow-xl">
+                <button onclick="window.exitGame()" class="w-10 h-10 bg-slate-800/80 hover:bg-slate-700 text-white rounded-xl flex items-center justify-center transition active:scale-90" title="Salir al Menú">
+                    <i class="fa-solid fa-house"></i>
+                </button>
+                <div class="text-center">
+                    <div id="hud-title" class="text-xs font-black uppercase tracking-wider text-amber-400">Juego</div>
+                    <div class="text-2xl font-black text-white leading-none mt-0.5" id="hud-score">0 PTS</div>
+                </div>
+                <div class="text-right">
+                    <div class="text-[10px] font-bold uppercase text-slate-400">Tiempo Entrenado</div>
+                    <div class="text-xl font-black text-emerald-400 leading-none mt-0.5" id="hud-timer">00:00</div>
+                </div>
+            </div>
+
+            <!-- Indicador Visual de Diagnóstico de Movimiento -->
+            <div id="motion-feedback" class="self-center bg-slate-950/80 backdrop-blur-md px-4 py-2 rounded-full border border-white/20 text-xs font-bold text-amber-300 text-center shadow-lg">
+                REGISTRANDO MOVIMIENTO...
+            </div>
+
+            <!-- Pie de juego (Instrucción flotante + Botón de Terminar) -->
+            <div class="hud-glass p-3 rounded-2xl text-center pointer-events-auto flex flex-col items-center gap-2">
+                <p id="hud-instruction" class="text-xs font-bold text-white uppercase tracking-wide">
+                    ¡Muévete para jugar y sumar el máximo puntaje!
+                </p>
+                <button onclick="window.finishWorkout()" class="bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-black px-6 py-2 rounded-xl text-xs uppercase tracking-wider shadow-lg active:scale-95 transition">
+                    <i class="fa-solid fa-flag-checkered mr-1"></i> Terminar Entreno
+                </button>
+            </div>
+        </div>
+
+        <!-- PANTALLA 4: RESULTADOS (GAME OVER) -->
+        <div id="result-screen" class="hidden absolute inset-0 z-30 flex flex-col items-center justify-center p-6 bg-slate-950/90 backdrop-blur-md text-center">
+            <div class="w-20 h-20 bg-amber-500/20 rounded-full flex items-center justify-center text-4xl mb-4 border border-amber-500/30">
+                🏆
+            </div>
+            <h2 class="text-3xl font-black uppercase text-white tracking-wider">¡Entrenamiento Completado!</h2>
+            <p id="result-game-name" class="text-slate-400 text-sm font-semibold uppercase mt-1">Bomba de Agua</p>
+
+            <div class="my-6 bg-slate-900/80 p-6 rounded-2xl border border-slate-800 w-full max-w-xs">
+                <div class="text-xs font-bold uppercase text-slate-400">Puntaje Máximo Logrado</div>
+                <div id="final-score" class="text-5xl font-black text-amber-400 my-1">120</div>
+                <div class="text-xs font-medium text-emerald-400" id="final-stats">¡Récord personal de resistencia!</div>
+                <div id="final-time" class="text-xs text-slate-400 mt-2 font-semibold">Tiempo: 02:45</div>
+            </div>
+
+            <div class="flex gap-3 w-full max-w-xs">
+                <button onclick="window.restartCurrentGame()" class="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black py-3 rounded-xl transition active:scale-95 uppercase text-sm shadow-lg">
+                    Reintentar
+                </button>
+                <button onclick="window.exitGame()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl transition active:scale-95 uppercase text-sm">
+                    Menú
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- ESTADO GLOBAL Y VARIABLES ---
+        let currentGameMode = null; // 'bike', 'squat', 'space'
+        let gameActive = false;
+        let score = 0;
+        let secondsElapsed = 0;
+        let gameTimerInterval = null;
+        let countdownTimerInterval = null;
+
+        // Elementos DOM
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('ar_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+
+        // Pantallas
+        const menuScreen = document.getElementById('menu-screen');
+        const countdownScreen = document.getElementById('countdown-screen');
+        const gameHud = document.getElementById('game-hud');
+        const resultScreen = document.getElementById('result-screen');
+        
+        // HUD & Feedback
+        const hudTitle = document.getElementById('hud-title');
+        const hudScore = document.getElementById('hud-score');
+        const hudTimer = document.getElementById('hud-timer');
+        const hudInstruction = document.getElementById('hud-instruction');
+        const motionFeedback = document.getElementById('motion-feedback');
+        const countdownNumber = document.getElementById('countdown-number');
+
+        // --- MEDIAPIPE & POSE VARIABLES ---
+        let poseDetector = null;
+        let cameraInstance = null;
+        let poseLandmarks = null;
+
+        // --- ESTADOS ESPECÍFICOS DE MINIJUEGOS ---
+        // 1. Bici
+        let bikeDistance = 0;
+        let lastLeftY = 0;
+        let lastRightY = 0;
+        let bikeSpeed = 0;
+
+        // 2. Sentadillas (Bomba)
+        let squatState = 'UP'; // 'UP' o 'DOWN'
+        let pumpProgress = 0; // 0 a 100% para llenar la cubeta
+        let bucketsFilled = 0;
+        let currentKneeAngle = 180;
+        let initialHipY = null;
+
+        // 3. Piloto Espacial
+        let shipX = 0.5; // Posición horizontal normalizada (0 a 1)
+        let lasers = [];
+        let targets = [];
+        let explosions = []; // Partículas de desintegración
+        let lastPunchTime = 0;
+
+        // Ajustar tamaño del canvas dinámicamente
+        function resizeCanvas() {
+            canvasElement.width = canvasElement.parentElement.clientWidth;
+            canvasElement.height = canvasElement.parentElement.clientHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // --- INICIALIZACIÓN DE CÁMARA Y MEDIAPIPE ---
+        function initCameraAndPose() {
+            if (typeof Pose === 'undefined') {
+                setTimeout(initCameraAndPose, 500);
+                return;
+            }
+
+            poseDetector = new Pose({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+            });
+
+            poseDetector.setOptions({
+                modelComplexity: 1,
+                smoothLandmarks: true,
+                enableSegmentation: false,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+
+            poseDetector.onResults(onPoseResults);
+
+            cameraInstance = new Camera(videoElement, {
+                onFrame: async () => {
+                    await poseDetector.send({ image: videoElement });
+                },
+                width: 640,
+                height: 480
+            });
+
+            cameraInstance.start().then(() => {
+                document.getElementById('cam-dot').classList.remove('bg-yellow-500', 'animate-ping');
+                document.getElementById('cam-dot').classList.add('bg-emerald-500');
+                document.getElementById('cam-text').innerText = 'Cámara lista y lista para el movimiento';
+            }).catch(err => {
+                console.error("Error al acceder a la cámara:", err);
+                document.getElementById('cam-text').innerText = 'Error al acceder a la cámara. Permite los permisos.';
+            });
+        }
+
+        // --- PROCESAMIENTO DE REFERENCIA POSE ---
+        function onPoseResults(results) {
+            // Renderizar la cámara directamente en el Canvas para visualización AR
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.poseLandmarks) {
+                poseLandmarks = results.poseLandmarks;
+                
+                // Si el juego está activo, procesar la lógica y los gráficos AR
+                if (gameActive) {
+                    processGameLogic(poseLandmarks);
+                }
+            } else {
+                poseLandmarks = null;
+            }
+            canvasCtx.restore();
+        }
+
+        // --- CONTROLADORES DE NAVEGACIÓN DE JUEGO (GLOBALES) ---
+        window.selectGame = function(mode) {
+            currentGameMode = mode;
+            menuScreen.classList.add('hidden');
+            resultScreen.classList.add('hidden');
+            startCountdown();
+        };
+
+        function startCountdown() {
+            countdownScreen.classList.remove('hidden');
+            let count = 5;
+            countdownNumber.innerText = count;
+
+            if (countdownTimerInterval) clearInterval(countdownTimerInterval);
+
+            countdownTimerInterval = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    countdownNumber.innerText = count;
+                } else {
+                    clearInterval(countdownTimerInterval);
+                    countdownScreen.classList.add('hidden');
+                    launchGame();
+                }
+            }, 1000);
+        }
+
+        function launchGame() {
+            gameActive = true;
+            score = 0;
+            secondsElapsed = 0;
+            pumpProgress = 0;
+            bucketsFilled = 0;
+            bikeDistance = 0;
+            bikeSpeed = 0;
+            squatState = 'UP';
+            initialHipY = null;
+            targets = [];
+            lasers = [];
+            explosions = [];
+
+            // Configurar UI según el juego
+            gameHud.classList.remove('hidden');
+            hudScore.innerText = '0 PTS';
+            hudTimer.innerText = '00:00';
+
+            if (currentGameMode === 'bike') {
+                hudTitle.innerText = 'LA BICI AMARILLA';
+                hudInstruction.innerText = '¡Corre en tu sitio para pedalear y sumar puntos de distancia!';
+            } else if (currentGameMode === 'squat') {
+                hudTitle.innerText = 'BOMBA DE AGUA';
+                hudInstruction.innerText = 'Baja en sentadilla para bombear. ¡Cada cubeta llena suma 10 pts!';
+            } else if (currentGameMode === 'space') {
+                hudTitle.innerText = 'PILOTO ESPACIAL';
+                hudInstruction.innerText = 'Inclínate para maniobrar y da golpes hacia arriba para disparar.';
+            }
+
+            // Iniciar Cronómetro Ascendente (Entrenamiento sin límite de tiempo)
+            if (gameTimerInterval) clearInterval(gameTimerInterval);
+            gameTimerInterval = setInterval(() => {
+                secondsElapsed++;
+                const mins = String(Math.floor(secondsElapsed / 60)).padStart(2, '0');
+                const secs = String(secondsElapsed % 60).padStart(2, '0');
+                hudTimer.innerText = `${mins}:${secs}`;
+            }, 1000);
+        }
+
+        window.exitGame = function() {
+            gameActive = false;
+            clearInterval(gameTimerInterval);
+            clearInterval(countdownTimerInterval);
+            gameHud.classList.add('hidden');
+            countdownScreen.classList.add('hidden');
+            resultScreen.classList.add('hidden');
+            menuScreen.classList.remove('hidden');
+        };
+
+        window.finishWorkout = function() {
+            endGame();
+        };
+
+        window.restartCurrentGame = function() {
+            resultScreen.classList.add('hidden');
+            startCountdown();
+        };
+
+        function endGame() {
+            gameActive = false;
+            clearInterval(gameTimerInterval);
+            gameHud.classList.add('hidden');
+            resultScreen.classList.remove('hidden');
+
+            document.getElementById('final-score').innerText = score;
+            const mins = String(Math.floor(secondsElapsed / 60)).padStart(2, '0');
+            const secs = String(secondsElapsed % 60).padStart(2, '0');
+            document.getElementById('final-time').innerText = `Tiempo total entrenado: ${mins}:${secs}`;
+            
+            if (currentGameMode === 'bike') {
+                document.getElementById('result-game-name').innerText = 'La Bici Amarilla de Wakefield';
+                document.getElementById('final-stats').innerText = `Recorriste ${Math.floor(bikeDistance)} metros acumulados`;
+            } else if (currentGameMode === 'squat') {
+                document.getElementById('result-game-name').innerText = 'Bomba de Agua (Sentadillas)';
+                document.getElementById('final-stats').innerText = `Llenaste ${bucketsFilled} cubetas de agua completas`;
+            } else if (currentGameMode === 'space') {
+                document.getElementById('result-game-name').innerText = 'Piloto Espacial';
+                document.getElementById('final-stats').innerText = `Puntaje total derribando platillos voladores`;
+            }
+        }
+
+        // --- CÁLCULO VECTORES Y ÁNGULOS ---
+        function calculateAngle(p1, p2, p3) {
+            const radians = Math.atan2(p3.y - p2.y, p3.x - p2.x) - Math.atan2(p1.y - p2.y, p1.x - p2.x);
+            let angle = Math.abs((radians * 180.0) / Math.PI);
+            if (angle > 180.0) angle = 360 - angle;
+            return angle;
+        }
+
+        // --- PROCESAMIENTO DE LÓGICA DE MINIJUEGOS Y AR GRAPHICS ---
+        function processGameLogic(landmarks) {
+            if (currentGameMode === 'squat') {
+                updateSquatGame(landmarks);
+            } else if (currentGameMode === 'bike') {
+                updateBikeGame(landmarks);
+            } else if (currentGameMode === 'space') {
+                updateSpaceGame(landmarks);
+            }
+        }
+
+        // --- 1. MINIJUEGO: SENTADILLAS (BOMBA DE AGUA) ---
+        function updateSquatGame(landmarks) {
+            // Puntos clave: Hombro(11), Cadera(23), Rodilla(25), Tobillo(27)
+            const hip = landmarks[23] || landmarks[24];
+            const knee = landmarks[25] || landmarks[26];
+            const ankle = landmarks[27] || landmarks[28];
+            const shoulder = landmarks[11] || landmarks[12];
+
+            let flexDetected = false;
+
+            if (hip) {
+                if (initialHipY === null) {
+                    initialHipY = hip.y;
+                } else {
+                    // Adaptar la altura base de pie dinámicamente cuando está erguido
+                    if (squatState === 'UP' && hip.y < initialHipY) {
+                        initialHipY = hip.y;
+                    }
+                }
+            }
+
+            if (hip && knee && ankle) {
+                // Medir ángulo tridimensional de rodilla
+                currentKneeAngle = calculateAngle(hip, knee, ankle);
+                if (currentKneeAngle <= 145) {
+                    flexDetected = true;
+                }
+            }
+            
+            // Detección secundaria: Desplazamiento real de cadera hacia abajo
+            if (!flexDetected && hip && initialHipY !== null) {
+                const hipDrop = hip.y - initialHipY;
+                if (hipDrop > 0.07) {
+                    flexDetected = true;
+                }
+            }
+
+            // Umbrales estrictos de ciclo: DEBE BAJAR Y SUBIR
+            if (squatState === 'UP' && flexDetected) {
+                squatState = 'DOWN'; // Se registra la bajada
+            } else if (squatState === 'DOWN' && (!flexDetected && (currentKneeAngle >= 155 || (hip && (hip.y - initialHipY) < 0.03)))) {
+                squatState = 'UP'; // Se completa el ciclo al volver a subir de pie
+                pumpProgress += 50;
+
+                // Solo sumar puntos al completar la cubeta (2 sentadillas completas abajo-arriba)
+                if (pumpProgress >= 100) {
+                    pumpProgress = 0;
+                    bucketsFilled++;
+                    score += 10;
+                    hudScore.innerText = `${score} PTS`;
+                }
+            }
+
+            // Visual Feedback State
+            motionFeedback.innerText = `POSICIÓN: ${squatState === 'DOWN' ? 'SENTADILLA (ABAJO)' : 'DE PIE (ARRIBA)'} | CUBETAS: ${bucketsFilled}`;
+            motionFeedback.className = squatState === 'DOWN' 
+                ? "self-center bg-blue-600 px-4 py-2 rounded-full font-black text-xs text-white shadow-lg animate-bounce"
+                : "self-center bg-emerald-600 px-4 py-2 rounded-full font-black text-xs text-white shadow-lg";
+
+            // --- DIBUJAR REALIDAD AUMENTADA: BOMBA DE AGUA Y CUBETA ---
+            const cw = canvasElement.width;
+            const ch = canvasElement.height;
+
+            // Dibujar Palanca de Bomba superpuesta en el centro inferior
+            const pumpX = cw * 0.3;
+            const pumpY = ch * 0.5;
+            const handleY = (squatState === 'DOWN') ? pumpY + 40 : pumpY - 30;
+
+            // Tubo base verde
+            canvasCtx.fillStyle = '#059669';
+            canvasCtx.fillRect(pumpX - 15, pumpY, 30, ch * 0.4);
+
+            // Mango Amarillo (Empujado por Sentadillas)
+            canvasCtx.strokeStyle = '#f59e0b';
+            canvasCtx.lineWidth = 14;
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(pumpX - 50, handleY);
+            canvasCtx.lineTo(pumpX + 50, handleY);
+            canvasCtx.stroke();
+
+            // Caño de la bomba
+            canvasCtx.fillStyle = '#047857';
+            canvasCtx.fillRect(pumpX, pumpY + 30, 40, 15);
+
+            // Cubeta de agua (Llenado dinámico)
+            const bucketX = pumpX + 45;
+            const bucketY = pumpY + 45;
+            const bucketW = 60;
+            const bucketH = 70;
+
+            // Contenido de Agua
+            const waterHeight = (pumpProgress / 100) * (bucketH - 10);
+            canvasCtx.fillStyle = '#0284c7';
+            canvasCtx.fillRect(bucketX + 5, bucketY + bucketH - waterHeight - 5, bucketW - 10, waterHeight);
+
+            // Borde Cubeta Roja
+            canvasCtx.strokeStyle = '#dc2626';
+            canvasCtx.lineWidth = 6;
+            canvasCtx.strokeRect(bucketX, bucketY, bucketW, bucketH);
+
+            // Texto Cubetas
+            canvasCtx.fillStyle = '#ffffff';
+            canvasCtx.font = 'bold 16px Outfit, sans-serif';
+            canvasCtx.fillText(`Cubetas: ${bucketsFilled}`, bucketX, bucketY + bucketH + 25);
+        }
+
+        // --- 2. MINIJUEGO: LA BICI AMARILLA ---
+        function updateBikeGame(landmarks) {
+            const leftAnkle = landmarks[27];
+            const rightAnkle = landmarks[28];
+            const leftKnee = landmarks[25];
+            const rightKnee = landmarks[26];
+            const leftHip = landmarks[23];
+            const rightHip = landmarks[24];
+
+            // Medir delta vertical de movimiento entre fotogramas consecutivos
+            let totalDeltaY = 0;
+            
+            if (leftAnkle && rightAnkle) {
+                totalDeltaY += Math.abs(leftAnkle.y - lastLeftY);
+                totalDeltaY += Math.abs(rightAnkle.y - lastRightY);
+                lastLeftY = leftAnkle.y;
+                lastRightY = rightAnkle.y;
+            } else if (leftKnee && rightKnee) {
+                totalDeltaY += Math.abs(leftKnee.y - lastLeftY);
+                totalDeltaY += Math.abs(rightKnee.y - lastRightY);
+                lastLeftY = leftKnee.y;
+                lastRightY = rightKnee.y;
+            } else if (leftHip && rightHip) {
+                totalDeltaY += Math.abs(leftHip.y - lastLeftY);
+                totalDeltaY += Math.abs(rightHip.y - lastRightY);
+                lastLeftY = leftHip.y;
+                lastRightY = rightHip.y;
+            }
+
+            // Filtro anti-ruido: Solo acelera si el usuario se mueve realmente en el sitio
+            if (totalDeltaY > 0.025) { 
+                bikeSpeed = Math.min(bikeSpeed + 0.8, 18);
+                bikeDistance += bikeSpeed * 0.08;
+                score = Math.floor(bikeDistance);
+                hudScore.innerText = `${score} PTS`;
+                motionFeedback.innerText = `¡CORRIENDO! VELOCIDAD: ${Math.round(bikeSpeed)} km/h`;
+                motionFeedback.className = "self-center bg-amber-500 px-4 py-2 rounded-full font-black text-xs text-slate-950 shadow-lg animate-pulse";
+            } else {
+                bikeSpeed = Math.max(bikeSpeed - 0.6, 0);
+                motionFeedback.innerText = "¡CORRE EN TU LUGAR PARA PEDALEAR!";
+                motionFeedback.className = "self-center bg-slate-800 px-4 py-2 rounded-full font-black text-xs text-slate-300 shadow-lg";
+            }
+
+            // Dibujar Bicicleta Amarilla AR
+            const cw = canvasElement.width;
+            const ch = canvasElement.height;
+
+            const bikeX = cw * 0.5;
+            const bikeY = ch * 0.75;
+
+            // Ruedas en movimiento (giratorias visualmente)
+            canvasCtx.strokeStyle = '#ffffff';
+            canvasCtx.lineWidth = 6;
+            canvasCtx.beginPath();
+            canvasCtx.arc(bikeX - 45, bikeY, 25, 0, Math.PI * 2);
+            canvasCtx.arc(bikeX + 45, bikeY, 25, 0, Math.PI * 2);
+            canvasCtx.stroke();
+
+            // Radios giratorios
+            const wheelAngle = (Date.now() / 100) % (Math.PI * 2);
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(bikeX - 45, bikeY);
+            canvasCtx.lineTo(bikeX - 45 + Math.cos(wheelAngle) * 20, bikeY + Math.sin(wheelAngle) * 20);
+            canvasCtx.moveTo(bikeX + 45, bikeY);
+            canvasCtx.lineTo(bikeX + 45 + Math.cos(wheelAngle) * 20, bikeY + Math.sin(wheelAngle) * 20);
+            canvasCtx.stroke();
+
+            // Cuadro Bicicleta Amarilla
+            canvasCtx.strokeStyle = '#facc15';
+            canvasCtx.lineWidth = 8;
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(bikeX - 45, bikeY);
+            canvasCtx.lineTo(bikeX, bikeY - 30);
+            canvasCtx.lineTo(bikeX + 45, bikeY);
+            canvasCtx.lineTo(bikeX + 15, bikeY - 30);
+            canvasCtx.closePath();
+            canvasCtx.stroke();
+        }
+
+        // --- 3. MINIJUEGO: PILOTO ESPACIAL ---
+        function updateSpaceGame(landmarks) {
+            const nose = landmarks[0];
+            const leftWrist = landmarks[15];
+            const rightWrist = landmarks[16];
+            const leftShoulder = landmarks[11];
+            const rightShoulder = landmarks[12];
+
+            // Inclinación/Balanceo corregida a modo espejo (si te mueves a la derecha, la nave va a la derecha)
+            if (nose) {
+                shipX = nose.x; 
+            }
+
+            // Disparo: Golpe o puño hacia arriba
+            const now = Date.now();
+            let isPunching = false;
+
+            if (leftWrist && leftShoulder && leftWrist.y < leftShoulder.y - 0.05) isPunching = true;
+            if (rightWrist && rightShoulder && rightWrist.y < rightShoulder.y - 0.05) isPunching = true;
+
+            if (isPunching && now - lastPunchTime > 200) {
+                lasers.push({ x: shipX - 0.03, y: 0.8 });
+                lasers.push({ x: shipX + 0.03, y: 0.8 });
+                lastPunchTime = now;
+            }
+
+            // Spawn Infinito de Platillos Voladores
+            if (targets.length < 6 && Math.random() < 0.08) {
+                targets.push({ 
+                    x: Math.random() * 0.8 + 0.1, 
+                    y: -0.05, 
+                    speed: 0.004 + Math.random() * 0.006,
+                    radius: 25 
+                });
+            }
+
+            const cw = canvasElement.width;
+            const ch = canvasElement.height;
+            const shipPx = shipX * cw;
+            const shipPy = ch * 0.85;
+
+            // Nave AR
+            canvasCtx.fillStyle = '#06b6d4';
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(shipPx, shipPy - 25);
+            canvasCtx.lineTo(shipPx - 30, shipPy + 20);
+            canvasCtx.lineTo(shipPx + 30, shipPy + 20);
+            canvasCtx.closePath();
+            canvasCtx.fill();
+
+            // Actualizar y Dibujar Láseres
+            canvasCtx.fillStyle = '#38bdf8';
+            for (let i = lasers.length - 1; i >= 0; i--) {
+                lasers[i].y -= 0.05;
+                canvasCtx.fillRect(lasers[i].x * cw - 3, lasers[i].y * ch, 6, 22);
+
+                if (lasers[i].y < 0) lasers.splice(i, 1);
+            }
+
+            // Actualizar y Dibujar Platillos Voladores
+            for (let t = targets.length - 1; t >= 0; t--) {
+                targets[t].y += targets[t].speed;
+                const tx = targets[t].x * cw;
+                const ty = targets[t].y * ch;
+
+                // Reiniciar si pasa la pantalla abajo
+                if (targets[t].y > 1.05) {
+                    targets[t].y = -0.05;
+                    targets[t].x = Math.random() * 0.8 + 0.1;
+                }
+
+                // Dibujar Platillo
+                canvasCtx.fillStyle = '#c084fc';
+                canvasCtx.beginPath();
+                canvasCtx.ellipse(tx, ty, targets[t].radius, 10, 0, 0, Math.PI * 2);
+                canvasCtx.fill();
+                canvasCtx.fillStyle = '#e879f9';
+                canvasCtx.beginPath();
+                canvasCtx.arc(tx, ty - 4, 10, 0, Math.PI * 2);
+                canvasCtx.fill();
+
+                // Colisión con láseres
+                for (let l = lasers.length - 1; l >= 0; l--) {
+                    const lx = lasers[l].x * cw;
+                    const ly = lasers[l].y * ch;
+                    const dist = Math.hypot(tx - lx, ty - ly);
+
+                    if (dist < 32) {
+                        // Crear Animación de Desintegración
+                        createExplosion(tx, ty);
+                        
+                        targets.splice(t, 1);
+                        lasers.splice(l, 1);
+                        score += 10;
+                        hudScore.innerText = `${score} PTS`;
+                        break;
+                    }
+                }
+            }
+
+            // Renderizar Partículas de Animación de Desintegración
+            updateAndRenderExplosions(cw, ch);
+
+            motionFeedback.innerText = "¡INCLÍNA EL CUERPO PARA GIRAR | GOLPEA HACIA ARRIBA PARA DISPARAR!";
+            motionFeedback.className = "self-center bg-cyan-600 px-4 py-2 rounded-full font-black text-xs text-white shadow-lg";
+        }
+<!-- ... existing code -->
